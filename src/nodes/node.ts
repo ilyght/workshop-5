@@ -114,7 +114,6 @@ export async function node(
                 await fetch(`http://localhost:${BASE_NODE_PORT + i}/message`, {
                     method: "POST",
                     body: JSON.stringify({ k, x, phase }),
-                    headers: { "Content-Type": "application/json" },
                 });
             }
         }
