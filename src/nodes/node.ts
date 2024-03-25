@@ -26,6 +26,7 @@ export async function node(
     let receivedMessagesP: { type: string, k: number, x: Value }[] = [];
     let receivedMessagesR: { type: string, k: number, x: Value }[] = [];
 
+
     // TODO implement this
     // this route allows retrieving the current status of the node
     node.get("/status", (req, res) => {
@@ -39,38 +40,63 @@ export async function node(
     // TODO implement this
     // this route allows the node to receive messages from other nodes
     node.post("/message", (req, res) => {
-        let {type, k , x } = req.body;
+        try {
+            const { k, x, type } = req.body;
 
-        if (state.killed || isFaulty)
-        {
-            res.status(500).send("node not working")
-        }
-        else {
-            if(type == "P")
-            {
-                receivedMessagesP.push({type, k, x})
-                let {maxElement, maxCount} = getMaxOccurrence(receivedMessagesP);
-                if (maxCount >= F+1 && maxElement != "?"){
-                    state.decided = true
-                    state.x = maxElement
-                }
-                else{
-                    state.x = Math.random() > 0.5 ? 0 : 1;
+            if (!isFaulty && !state.killed) {
+                if (type === "R") {
+                    if (!receivedMessagesP.some((proposal) => proposal.k === k)) {
+                        receivedMessagesP.push({ type: type, k, x });
+                    }
+                    const proposal = receivedMessagesP.filter((proposal) => proposal.k === k);
+
+                    if (proposal.length >= N - F) {
+                        const count0 = proposal.filter((proposal) => proposal.x === 0).length;
+                        const count1 = proposal.filter((proposal) => proposal.x === 1).length;
+                        if (count0 > N / 2) {
+                            state.x = 0;
+                        } else if (count1 > N / 2) {
+                            state.x = 1;
+                        } else {
+                            state.x = "?";
+                        }
+                        sendMessage(k, x, "P")
+                    }
+                } else if (type === "P") {
+                    if (!receivedMessagesR.some((vote) => vote.k === k)) {
+                        receivedMessagesR.push({ type: type, k, x });
+                    }
+                    const vote = receivedMessagesR.filter((vote) => vote.k === k);
+                    if (vote.length >= N - F) {
+                        const count0 = vote.filter((vote) => vote.x === 0).length;
+                        const count1 = vote.filter((vote) => vote.x === 1).length;
+
+                        if (count0 >= F + 1) {
+                            state.x = 0;
+                            state.decided = true;
+                        } else if (count1 >= F + 1) {
+                            state.x = 1;
+                            state.decided = true;
+                        } else {
+                            if (count0 + count1 > 0 && count0 > count1) {
+                                state.x = 0;
+                            } else if (count0 + count1 > 0 && count0 < count1) {
+                                state.x = 1;
+                            } else {
+                                state.x = Math.random() > 0.5 ? 0 : 1;
+                            }
+                            state.k = k + 1;
+
+                            sendMessage(k, x, "R")
+                        }
+                    }
                 }
             }
-            if(type == "R")
-            {
-                receivedMessagesR.push({type, k, x})
-                let {maxElement, maxCount} = getMaxOccurrence(receivedMessagesR);
-                if (maxCount >= N/2 ){
-                    sendMessage(k, x, type)
-                }
-                else{
-                    sendMessage(k, "?", type)
-                }
-            }
+            res.status(200).send("Message received and processed.");
+        } catch (error) {
+            console.error("An error occurred:", error);
+            res.status(500).send("Internal Server Error");
         }
-        state.k=k+1;
     });
 
     // TODO implement this
@@ -117,31 +143,6 @@ export async function node(
                 });
             }
         }
-    }
-
-
-    function getMaxOccurrence<Value>(messages: { type: string, k: number, x: Value }[]): { maxElement: Value | null; maxCount: number } {
-        const occurrences = new Map<Value, number>();
-
-        // Compter les occurrences de chaque élément
-        messages.forEach(message => {
-            const element = message.x;
-            occurrences.set(element, (occurrences.get(element) || 0) + 1);
-        });
-
-        // Trouver l'élément avec le plus d'occurrences
-        let maxElement: Value | null;
-        let maxCount = -1; // Initialisation avec une valeur minimale
-
-        for (const [element, count] of occurrences.entries()) {
-            if (count > maxCount) {
-                maxCount = count;
-                maxElement = element;
-            }
-        }
-
-        // @ts-ignore
-        return { maxElement, maxCount };
     }
 
 
